@@ -2,7 +2,26 @@ import { projectData } from './project-data.mjs';
 let revision=0,ready=false,dirty=false,sending=false,timer,remoteConflict=null,sequence=0;
 const cacheKey='zaopian-cloud-base-v1';
 const status={label:'正在读取账号项目…',error:''};
-const notify=()=>{for(const el of document.querySelectorAll('[data-cloud-status]'))el.textContent=status.label;};
+function displayStatus(){
+  if(remoteConflict)return {label:'版本冲突',tone:'error'};
+  if(status.label.startsWith('暂未同步'))return {label:'未同步',tone:'error'};
+  if(!ready)return {label:'连接中…',tone:'working'};
+  if(status.label==='正在保存项目文字…')return {label:'保存中…',tone:'working'};
+  if(dirty)return {label:'待保存',tone:'working'};
+  return {label:status.label==='账号项目已连接'?'已连接':'已保存',tone:'saved'};
+}
+const statusPath=tone=>tone==='error'?'M12 8v5m0 3h.01M12 3L2 21h20z':tone==='working'?'M12 8v4l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0':'M5 12l4 4L19 6';
+const notify=()=>{
+  const current=displayStatus();
+  for(const el of document.querySelectorAll('[data-cloud-status]'))el.textContent=current.label;
+  for(const el of document.querySelectorAll('[data-cloud-message]'))el.textContent=status.label;
+  for(const el of document.querySelectorAll('[data-cloud-error]')){el.textContent=status.error;el.hidden=!status.error;}
+  for(const el of document.querySelectorAll('[data-workspace-save]')){
+    el.dataset.tone=current.tone;
+    el.querySelector('summary').title=status.label;
+    el.querySelector('[data-cloud-icon]').setAttribute('d',statusPath(current.tone));
+  }
+};
 const cache=()=>{localStorage.setItem(cacheKey,JSON.stringify({revision,base:projectData(state)}));};
 function apply(remote){
   const referenceKey=value=>JSON.stringify([value?.kind,value?.fingerprint,value?.name]);
@@ -53,8 +72,13 @@ async function start(){
     else{status.label='账号项目已连接';notify();}
   }catch(error){status.label='暂未同步 · 草稿保留在此浏览器';status.error=error.message;notify();}
 }
-function panel(){return `<div class="sync-note"><span data-cloud-status>${esc(status.label)}</span><button class="btn small" data-cloud="retry">同步项目</button><span class="muted">只同步文字和进度，视频 / 图片 / 音频不上传。</span>${remoteConflict?`<div class="sync-conflict" role="alert"><p>当前浏览器与账号保存的资料有不同修改。请先导出需要保留的资料，再选择继续版本。</p><button class="btn" data-cloud="remote">使用账号最新资料</button><button class="btn" data-cloud="local">保留此浏览器修改并同步</button><button class="btn" data-cloud="backup">下载此浏览器资料</button></div>`:''}</div>`;}
-window.WorkspaceSync={changed,status,panel,flush};
+function control(){
+  const current=displayStatus();
+  return `<details class="workspace-save" data-workspace-save data-tone="${current.tone}" ${remoteConflict?'open':''}><summary title="${esc(status.label)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path data-cloud-icon d="${statusPath(current.tone)}"/></svg><span data-cloud-status role="status" aria-live="polite">${current.label}</span></summary><div class="save-popover"><strong>项目保存</strong><p data-cloud-message>${esc(status.label)}</p><p class="error" data-cloud-error ${status.error?'':'hidden'}>${esc(status.error)}</p>${remoteConflict?`<div class="sync-conflict" role="alert"><p>账号资料与当前草稿有不同修改，请选择要继续使用的版本。</p><div class="save-actions"><button class="btn small" data-cloud="remote">使用账号最新资料</button><button class="btn small" data-cloud="local">保留当前修改并同步</button><button class="btn small" data-cloud="backup">下载当前草稿</button></div></div>`:`<p class="muted">项目文字自动保存到当前账号。</p><button class="btn small" data-cloud="retry">${current.tone==='error'?'重试同步':'同步项目'}</button>`}</div></details>`;
+}
+window.WorkspaceSync={changed,status,control,flush};
+document.addEventListener('click',event=>{if(!event.target.closest('[data-workspace-save]')&&!remoteConflict)for(const el of document.querySelectorAll('[data-workspace-save]'))el.open=false;});
+document.addEventListener('keydown',event=>{if(event.key==='Escape')for(const el of document.querySelectorAll('[data-workspace-save][open]')){el.open=false;el.querySelector('summary').focus();}});
 document.addEventListener('click',async event=>{
   const action=event.target.closest('button')?.dataset.cloud;if(!action)return;
   if(busy||mediaView.working){toast('请等待当前浏览器视频处理完成');return;}
