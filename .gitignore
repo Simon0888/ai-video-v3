@@ -2,3 +2,5 @@ dist/
 node_modules/
 .sites-runtime/
 .env
+.local/
+__pycache__/

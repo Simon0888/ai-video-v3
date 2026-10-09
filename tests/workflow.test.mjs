@@ -6,6 +6,7 @@ import vm from 'node:vm';
 // These checks exercise the application's state and event handlers without a browser.
 // They do not verify video codecs, playback, accessibility or visual layout.
 const source=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+const engineSource=readFileSync(new URL('../engine-ui.js',import.meta.url),'utf8');
 function app(initialStorage){
   const events={}, nodes={}, storage=new Map(initialStorage?[['zaopian-v1',initialStorage]]:[]), downloads=[], tools=[];
   const node=id=>nodes[id]??=({innerHTML:'',textContent:'',style:{},classList:{add(){},remove(){}},showModal(){},close(){}});
@@ -14,6 +15,21 @@ function app(initialStorage){
   return {context,events,nodes,tools,downloads,storage,run:code=>vm.runInContext(code,context),state:()=>JSON.parse(vm.runInContext('JSON.stringify(state)',context))};
 }
 function complete(a){a.run("setProduct('cup'); setReference({kind:'demo',name:'示例',description:'示例结构'}); analyze(); makeScript(); makeShots(); createTask();");}
+function withEngine(a){a.context.ZaopianEngineClient=class{clearAssets(){}};a.run(engineSource);return a;}
+test('actual transcript imports all seven segments and retains editable timeline through shots',()=>{
+  const a=withEngine(app());a.run("setProduct('cup'); setReference({kind:'local',name:'视频'}); mediaView.job={media:{duration:20},transcript:{segments:Array.from({length:7},(_,i)=>({id:i,start:i*2,end:i*2+1,text:'实际台词 '+i}))}}; useLocalTranscript(); makeShots();");
+  const s=a.state();assert.equal(s.scriptOrigin,'reference');assert.equal(s.script.length,7);assert.equal(s.shots.length,7);
+  assert.equal(s.shots[6].text,'实际台词 6');assert.ok(s.shots[6].visual);assert.equal(s.settings.duration,'20');
+});
+test('editing actual transcript invalidates derived production drafts and hides the old MP4',()=>{
+  const a=withEngine(app());a.run("setProduct('cup'); setReference({kind:'local',name:'视频'}); mediaView.job={revision:1,media:{duration:20},transcript:{segments:[{id:0,start:0,end:2,text:'实际台词'}]}}; useLocalTranscript(); makeShots(); createTask();");
+  let hidden=false;const lookup=a.context.document.querySelector;
+  a.context.document.querySelector=selector=>selector.startsWith('video[')?{pause(){},set hidden(value){hidden=value;}}:lookup(selector);
+  a.context.document.querySelectorAll=()=>[];
+  a.events.input({target:{dataset:{transcript:'0'},value:'重新校正'}});
+  const s=a.state();assert.equal(s.analysis,null);assert.equal(s.script,null);assert.equal(s.shots,null);assert.equal(s.tasks.length,0);
+  assert.equal(s.reference.transcriptDraft.segments[0].text,'重新校正');assert.equal(hidden,true);
+});
 test('six-step workflow creates linked script, shots and task',()=>{const a=app();complete(a);const s=a.state();assert.equal(s.product.id,'cup');assert.equal(s.analysis.length,4);assert.equal(s.script.length,4);assert.equal(s.shots.length,4);assert.equal(s.tasks[0].status,'ready');assert.equal(s.shots[0].text,s.script[0].text);});
 test('changing product invalidates dependent production results',()=>{const a=app();complete(a);a.run("setProduct('lamp')");const s=a.state();assert.equal(s.product.id,'lamp');assert.equal(s.analysis,null);assert.equal(s.script,null);assert.equal(s.shots,null);assert.equal(s.tasks.length,0);assert.equal(s.reference.kind,'demo');});
 test('editing script invalidates shots and task, regeneration uses edited copy',()=>{const a=app();complete(a);a.events.input({target:{dataset:{script:'0'},value:'这是用户修改的真实口播'}});assert.equal(a.state().shots,null);assert.equal(a.state().tasks.length,0);a.run('makeShots()');assert.equal(a.state().shots[0].text,'这是用户修改的真实口播');});

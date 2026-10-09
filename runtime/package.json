@@ -1,0 +1,7 @@
+{
+  "name": "zaopian-local-engine",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.15.0" },
+  "dependencies": { "@hypit/hypit": "0.3.0" }
+}
