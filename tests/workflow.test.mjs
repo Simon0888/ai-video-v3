@@ -16,6 +16,11 @@ function app(initialStorage){
 }
 function complete(a){a.run("setProduct('cup'); setReference({kind:'demo',name:'示例',description:'示例结构'}); analyze(); makeScript(); makeShots(); createTask();");}
 function withEngine(a){a.context.ZaopianEngineClient=class{clearAssets(){}};a.run(engineSource);return a;}
+test('failed browser re-analysis preserves already edited script, shots and task',async()=>{
+  const a=withEngine(app());complete(a);a.run("state.scriptOrigin='reference';state.reference={kind:'local',name:'原片.mp4'};videoFile={name:'原片.mp4'};localEngine.upload=async()=>({id:'failed-analysis',status:'failed',message:'下载失败'});localEngine.job=localEngine.upload;");
+  const before=a.state();await a.run('startLocalAnalysis()');
+  const after=a.state();assert.deepEqual(after.script,before.script);assert.deepEqual(after.shots,before.shots);assert.deepEqual(after.tasks,before.tasks);
+});
 test('actual transcript imports all seven segments and retains editable timeline through shots',()=>{
   const a=withEngine(app());a.run("setProduct('cup'); setReference({kind:'local',name:'视频'}); mediaView.job={media:{duration:20},transcript:{segments:Array.from({length:7},(_,i)=>({id:i,start:i*2,end:i*2+1,text:'实际台词 '+i}))}}; useLocalTranscript(); makeShots();");
   const s=a.state();assert.equal(s.scriptOrigin,'reference');assert.equal(s.script.length,7);assert.equal(s.shots.length,7);

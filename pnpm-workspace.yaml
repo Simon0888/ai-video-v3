@@ -1,0 +1,6 @@
+allowBuilds:
+  esbuild: true
+  onnxruntime-node: false
+  protobufjs: false
+minimumReleaseAgeExclude:
+  - drizzle-orm@0.45.4

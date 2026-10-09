@@ -1,12 +1,24 @@
 {
   "name": "ai-video-v3",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node server.mjs",
+    "dev": "node tools/web-preview.mjs",
+    "dev:native": "node server.mjs",
     "build": "node build.mjs",
-    "test": "node --test tests/*.test.mjs"
+    "test": "node --test tests/*.test.mjs",
+    "db:generate": "drizzle-kit generate"
+  },
+  "dependencies": {
+    "@ffmpeg/ffmpeg": "0.12.15",
+    "@ffmpeg/util": "0.12.2",
+    "@huggingface/transformers": "4.3.1"
+  },
+  "devDependencies": {
+    "drizzle-kit": "0.31.11",
+    "drizzle-orm": "0.45.4",
+    "esbuild": "0.28.2"
   },
   "engines": {
     "node": ">=20"
