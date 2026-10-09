@@ -26,3 +26,36 @@ test('new custom product is isolated and selected',()=>{const a=app();a.events.s
 test('export emits TXT, CSV and JSON downloads for the current task',()=>{const a=app();complete(a);a.run("exportFile('script');exportFile('shots');exportFile('project')");assert.equal(a.downloads.length,3);assert.ok(a.downloads[0].name.endsWith('.txt'));assert.ok(a.downloads[1].name.endsWith('.csv'));assert.ok(a.downloads[2].name.endsWith('.json'));});
 test('WebMCP navigation validates inputs and shares the same visible state',()=>{const a=app();assert.equal(a.tools.length,2);assert.throws(()=>a.tools[1].execute({step:9}));assert.equal(a.state().step,0);const result=a.tools[1].execute({step:2});assert.equal(result.step,'AI拆解');assert.equal(a.state().step,2);assert.match(a.nodes['#app'].innerHTML,/先为项目选择一个商品/);});
 test('untrusted product and script text is escaped in generated UI',()=>{const a=app();complete(a);a.run("state.product.name='<img src=x onerror=alert(1)>';state.step=3;render()");assert.ok(!a.nodes['#app'].innerHTML.includes('<img src=x'));assert.match(a.nodes['#app'].innerHTML,/&lt;img/);});
+
+test('recorded WebM gets duration metadata while encoded media stays unchanged',async()=>{
+  // Header captured from a real Chromium Canvas/MediaRecorder recording.
+  const bytes=Buffer.from('1a45dfa39f4286810142f7810142f2810442f381084282847765626d42878104428581021853806701ffffffffffffff1549a966992ad7b1830f42404d80864368726f6d655741864368726f6d651654ae6bbeaebcd7810173c587f631721c10b33d83810155ee81018685565f565039e09fb08202d0ba82050053c0810155b09055b1810155b9810255ba810d55bb81011f43b67501ffffffffffffffe78100a0654ba163db8100000082498342502cf04ff66638241c19921003a85f5bf87f17fd7fe2eb6bedbf','hex');
+  const a=app();a.context.recording=new Blob([bytes],{type:'video/webm;codecs=vp9'});
+  const fixed=await a.run('withWebmDuration(recording,15000)');
+  const output=Buffer.from(await fixed.arrayBuffer());
+  assert.equal(fixed.type,'video/webm;codecs=vp9');
+  assert.equal(output.length,bytes.length+11);
+  const durationOffset=output.indexOf(Buffer.from('448988','hex'));
+  assert.ok(durationOffset>0);
+  assert.equal(output.readDoubleBE(durationOffset+3),15000);
+  const tracks=Buffer.from('1654ae6b','hex');
+  assert.deepEqual(output.subarray(output.indexOf(tracks)),bytes.subarray(bytes.indexOf(tracks)));
+  a.context.recording=fixed;
+  const again=await a.run('withWebmDuration(recording,30000)');
+  const rewritten=Buffer.from(await again.arrayBuffer());
+  assert.equal(rewritten.length,output.length);
+  assert.equal(rewritten.readDoubleBE(durationOffset+3),30000);
+});
+
+test('upload reads finite duration after seeking a streaming WebM and releases the probe',async()=>{
+  const a=app();let released=false,loaded=false;
+  const probe={duration:Infinity,removeAttribute(name){released=name==='src';},load(){loaded=true;}};
+  a.context.document.createElement=()=>probe;
+  const pending=a.run("readVideoDuration('blob:recording')");
+  probe.onloadedmetadata();
+  assert.equal(probe.currentTime,1e10);
+  probe.duration=14.977;probe.ondurationchange();
+  assert.equal(await pending,14.977);
+  assert.equal(released,true);assert.equal(loaded,true);
+  assert.equal(probe.onerror,null);
+});
